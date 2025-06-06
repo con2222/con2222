@@ -6,8 +6,11 @@
 #include <vector>
 #include <ctime>
 #include <chrono>
+#include <locale.h>
 
 namespace fs = std::filesystem;
+
+bool exit_flag = 0;
 
 std::vector<fs::path> list_of_files() {
     std::vector<fs::path> files;
@@ -20,7 +23,7 @@ std::vector<fs::path> list_of_files() {
 
 std::string operations[6] = {"1. Open", "2. Rename", "3. Delete", "4. Copy", "5. Move", "6. File info"};
 
-void draw_menu(WINDOW* win, const std::vector<fs::path>& list, int highlight) {
+void draw_menu(WINDOW* win, const std::vector<fs::path>& list, int selected) {
     werase(win);
     int yMax, xMax;
     getmaxyx(win, yMax, xMax);
@@ -28,23 +31,25 @@ void draw_menu(WINDOW* win, const std::vector<fs::path>& list, int highlight) {
     mvwprintw(win, 0, 1, "File Manager");
     mvwprintw(win, yMax - 2, xMax - 19, "Press ESC to exit");
     for(int i = 0; i < list.size(); i++) {
-        if (i == highlight) {
+        if (i == selected) {
             wattron(win, A_REVERSE);
         }
         mvwprintw(win, i + 1, 1, list[i].filename().string().c_str());
-        if (i == highlight) {
+        if (i == selected) {
             wattroff(win, A_REVERSE);
         }
     }
     wrefresh(win);
 }
 
-void draw_options(WINDOW* win, const std::string ops[], int size) {
+void draw_options(WINDOW* win, const std::string ops[], int size, int selected) {
     werase(win);
     box(win, 0, 0);
     mvwprintw(win, 0, 1, "Operations");
     for(int i = 0; i < size; i++) {
+        if (i == selected) wattron(win, A_REVERSE);
         mvwprintw(win, i + 1, 1, ops[i].c_str());
+        if (i == selected) wattroff(win, A_REVERSE);
     }
     wrefresh(win);
 }
@@ -105,68 +110,58 @@ void draw_file_info(WINDOW* win, fs::path file) {
 }
 
 void input_operation(WINDOW* optionwin, fs::path file) {
-    int choice;
-    int flag = 0;
+    int input = 0;
     
-    int operation_highlight = 0;
+    int operation_selected = 0;
     
-    for(int i = 0; i < 5; i++) {
-        if (i == operation_highlight) wattron(optionwin, A_REVERSE);
-        mvwprintw(optionwin, i + 1, 1, operations[i].c_str());
-        if (i == operation_highlight) wattroff(optionwin, A_REVERSE);
-    }
-    wrefresh(optionwin);
+    draw_options(optionwin, operations, 6, operation_selected);
     
     while(true) {
-        choice = wgetch(optionwin);
+        input = wgetch(optionwin);
         
-        switch(choice) {
+        switch(input) {
             case KEY_UP:
-                operation_highlight--;
-                if (operation_highlight < 0) operation_highlight = 0;
+                operation_selected--;
+                if (operation_selected < 0) operation_selected = 0;
                 break;
             case KEY_DOWN:
-                operation_highlight++;
-                if (operation_highlight >= 6) operation_highlight = 5;
+                operation_selected++;
+                if (operation_selected >= 6) operation_selected = 5;
                 break;
             case 27: // ESC
-                flag = 1;
-                operation_highlight = -1;
+                operation_selected = -1;
                 werase(optionwin);
-                draw_options(optionwin, operations, 6);
-                break;
+                draw_options(optionwin, operations, 6, operation_selected);
+                return;
             case 10:
-                if (operations[operation_highlight] == "6. File info") {
-                    while(true) {
+                if (operations[operation_selected] == "6. File info") {
+                    char input = 0;
+                    while(input != 27) {
                         draw_file_info(optionwin, file);
-                        choice = wgetch(optionwin);
-                        if (choice == 27) {
-                            draw_options(optionwin, operations, 6);
-                            break;
-                        }
+                        input = wgetch(optionwin);
                     }
+                    draw_options(optionwin, operations, 6, operation_selected);
                 }
+                break;
+            case 113:
+            	exit_flag = 1;
+                return;
             default:
                 break;
         }
         
-        for(int i = 0; i < 6; i++) {
-            if (i == operation_highlight) wattron(optionwin, A_REVERSE);
-            mvwprintw(optionwin, i + 1, 1, operations[i].c_str());
-            if (i == operation_highlight) wattroff(optionwin, A_REVERSE);
-        }
-        wrefresh(optionwin);
-        
-        if (flag == 1) {
-            break;
-        }
+        draw_options(optionwin, operations, 6, operation_selected);
+
+        if (exit_flag) return;
     }
     
-    draw_options(optionwin, operations, 6);
+    draw_options(optionwin, operations, 6, operation_selected);
     return;
 }
 
 int main() {
+	setlocale(LC_ALL, "");
+	set_escdelay(25);
     initscr();
     noecho();
     cbreak();
@@ -175,59 +170,68 @@ int main() {
     
     int yMax, xMax;
     getmaxyx(stdscr, yMax, xMax);
-    int divider = xMax / 2;
+    int divider = std::max(20, xMax / 2);
     std::vector<fs::path> list = list_of_files();
     
     WINDOW* menuwin = newwin(yMax, divider, 0, 0);
     WINDOW* optionwin = newwin(yMax, divider, 0, divider);
     keypad(menuwin, TRUE);
     
-    int highlight = 0;
-    int choice;
+    int selected = 0;
+    int input;
     
-    draw_menu(menuwin, list, highlight);
-    draw_options(optionwin, operations, 6);
+    draw_menu(menuwin, list, selected);
+    draw_options(optionwin, operations, 6, -1);
     
     while(true) {
-        choice = wgetch(menuwin);
+        input = wgetch(menuwin);
         
-        switch(choice) {
+        switch(input) {
             case KEY_UP:
-                highlight--;
-                if (highlight < 0) highlight = 0;
+                selected--;
+                if (selected < 0) selected = 0;
                 break;
             case KEY_DOWN:
-                highlight++;
-                if (highlight >= list.size()) highlight = list.size() - 1;
+                selected++;
+                if (selected >= list.size()) selected = list.size() - 1;
                 break;
             case 10: // Enter
                 {
-                    std::string msg = "Selected: " + list[highlight].filename().string();
+                    /*std::string msg = "Selected: " + list[selected].filename().string();
                     mvwprintw(optionwin, 7, 1, msg.c_str());
-                    wrefresh(optionwin);
+                    wrefresh(optionwin);*/
                     
                     wmove(optionwin, 0, 1);
                     wrefresh(optionwin);
                     
                     keypad(optionwin, TRUE);
-                    input_operation(optionwin, list[highlight]);
+                    input_operation(optionwin, list[selected]);
                     keypad(optionwin, FALSE);
                     
-                    touchwin(menuwin);
-                    wrefresh(menuwin);
+					draw_menu(menuwin, list, selected); 
+					wrefresh(menuwin);
                     break;
                 }
             case 27: // ESC
                 endwin();
                 return 0;
+            case 113: // 'q'
+                exit_flag = 1;
+                break;
             default:
                 break;
         }
-        draw_menu(menuwin, list, highlight);
+
+        if (exit_flag == 1) {
+            break;
+        }
+
+        draw_menu(menuwin, list, selected);
     }
     
     delwin(menuwin);
     delwin(optionwin);
+
     endwin();
     return 0;
 }
