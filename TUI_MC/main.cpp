@@ -11,6 +11,7 @@
 namespace fs = std::filesystem;
 
 bool exit_flag = 0;
+int yMax, xMax;
 
 std::vector<fs::path> list_of_files() {
     std::vector<fs::path> files;
@@ -39,6 +40,7 @@ void draw_menu(WINDOW* win, const std::vector<fs::path>& list, int selected) {
             wattroff(win, A_REVERSE);
         }
     }
+    mvwprintw(win, yMax - 2, 1, fs::current_path().string().c_str());
     wrefresh(win);
 }
 
@@ -109,13 +111,20 @@ void draw_file_info(WINDOW* win, fs::path file) {
     wrefresh(win);
 }
 
+void print_absolute_path(WINDOW* optionwin, const fs::path& file) {
+    std::string msg = "Selected: " + file.filename().string();
+    mvwprintw(optionwin, yMax - 2, 1, msg.c_str());
+    wrefresh(optionwin);
+}
+
 void input_operation(WINDOW* optionwin, fs::path file) {
     int input = 0;
     
     int operation_selected = 0;
     
     draw_options(optionwin, operations, 6, operation_selected);
-    
+    print_absolute_path(optionwin, file);
+
     while(true) {
         input = wgetch(optionwin);
         
@@ -139,6 +148,10 @@ void input_operation(WINDOW* optionwin, fs::path file) {
                     while(input != 27) {
                         draw_file_info(optionwin, file);
                         input = wgetch(optionwin);
+                        if (input == 113) {
+                            exit_flag = 1;
+                            return;
+                        }
                     }
                     draw_options(optionwin, operations, 6, operation_selected);
                 }
@@ -151,6 +164,7 @@ void input_operation(WINDOW* optionwin, fs::path file) {
         }
         
         draw_options(optionwin, operations, 6, operation_selected);
+        print_absolute_path(optionwin, file);
 
         if (exit_flag) return;
     }
@@ -168,9 +182,9 @@ int main() {
     curs_set(0);
     keypad(stdscr, TRUE);
     
-    int yMax, xMax;
     getmaxyx(stdscr, yMax, xMax);
     int divider = std::max(20, xMax / 2);
+
     std::vector<fs::path> list = list_of_files();
     
     WINDOW* menuwin = newwin(yMax, divider, 0, 0);
@@ -196,11 +210,7 @@ int main() {
                 if (selected >= list.size()) selected = list.size() - 1;
                 break;
             case 10: // Enter
-                {
-                    /*std::string msg = "Selected: " + list[selected].filename().string();
-                    mvwprintw(optionwin, 7, 1, msg.c_str());
-                    wrefresh(optionwin);*/
-                    
+                {   
                     wmove(optionwin, 0, 1);
                     wrefresh(optionwin);
                     
