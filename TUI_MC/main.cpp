@@ -12,6 +12,8 @@ namespace fs = std::filesystem;
 
 bool exit_flag = 0;
 int yMax, xMax;
+constexpr char OPERATIONS_COUNT = 5;
+int selected = 0;
 
 std::vector<fs::path> list_of_files() {
     std::vector<fs::path> files;
@@ -22,12 +24,12 @@ std::vector<fs::path> list_of_files() {
     return files;
 }
 
-std::string operations[6] = {"1. Open", "2. Rename", "3. Delete", "4. Copy", "5. Move", "6. File info"};
+std::vector<fs::path> list = list_of_files();
+
+std::string operations[6] = {"1. Open", "2. Rename", "3. Delete", "4. Copy", "5. Move"};
 
 void draw_menu(WINDOW* win, const std::vector<fs::path>& list, int selected) {
     werase(win);
-    int yMax, xMax;
-    getmaxyx(win, yMax, xMax);
     box(win, 0, 0);
     mvwprintw(win, 0, 1, "File Manager");
     mvwprintw(win, yMax - 2, xMax - 19, "Press ESC to exit");
@@ -54,6 +56,64 @@ void draw_options(WINDOW* win, const std::string ops[], int size, int selected) 
         if (i == selected) wattroff(win, A_REVERSE);
     }
     wrefresh(win);
+}
+
+void update_file_name(WINDOW* win, const fs::path& file) {
+	int max_x, max_y;
+	
+    curs_set(1);
+	
+	std::string current_filename = file.filename().string();
+	std::string new_filename;
+	getmaxyx(win, max_y, max_x);
+	werase(win);
+	box(win, 0, 0);
+	std::string msg = "Selected: " + file.filename().string();
+    mvwprintw(win, yMax - 2, 1, msg.c_str());
+	wattron(win, A_BOLD | A_UNDERLINE);
+	mvwprintw(win, 0, max_x/2 - 9, "Write new filename");
+	wattroff(win, A_BOLD | A_UNDERLINE);
+	int cur_x = 1;
+	wmove(win, 1, 1);
+	
+	int ch = 0;
+	
+	while(true) {
+		ch = wgetch(win);
+		if (ch == 27) {break;}
+		if (ch == '\n' || ch == KEY_ENTER) {
+            break;
+        } else if (ch == KEY_BACKSPACE || ch == 127 || ch == 8) {
+            if (!new_filename.empty()) {
+                int y, x;
+                getyx(win, y, x);
+                if (x > 1) {
+                    new_filename.pop_back();
+                    wmove(win, y, x - 1);
+                    waddch(win, ' ');
+                    wmove(win, y, x - 1);
+                    cur_x--;
+                }
+            }
+        } else if (ch >= 32 && ch < 256) {
+            if (cur_x < max_x - 2) {
+                new_filename.push_back(static_cast<char>(ch));
+                waddch(win, ch);
+                cur_x++;
+            }
+        }
+        wrefresh(win);		
+	}
+	
+	curs_set(0);
+	if (new_filename.empty()) {
+		return;
+	} else {
+		fs::rename(file, file.parent_path() / new_filename);
+	}
+	
+	list = list_of_files();
+	selected = 0;
 }
 
 std::string get_time(const fs::path& file) {
@@ -89,8 +149,6 @@ std::string get_permissions(const fs::path& file) {
 
 void draw_file_info(WINDOW* win, fs::path file) {
     werase(win);
-    int yMax;
-    yMax = getmaxy(win);
     
     box(win, 0, 0);
     mvwprintw(win, 0, 1, "File info");
@@ -122,7 +180,7 @@ void input_operation(WINDOW* optionwin, fs::path file) {
     
     int operation_selected = 0;
     
-    draw_options(optionwin, operations, 6, operation_selected);
+    draw_options(optionwin, operations, OPERATIONS_COUNT, operation_selected);
     print_absolute_path(optionwin, file);
 
     while(true) {
@@ -135,27 +193,21 @@ void input_operation(WINDOW* optionwin, fs::path file) {
                 break;
             case KEY_DOWN:
                 operation_selected++;
-                if (operation_selected >= 6) operation_selected = 5;
+                if (operation_selected >= 5) operation_selected = 4;
                 break;
             case 27: // ESC
                 operation_selected = -1;
                 werase(optionwin);
-                draw_options(optionwin, operations, 6, operation_selected);
+                draw_options(optionwin, operations, OPERATIONS_COUNT, operation_selected);
                 return;
             case 10:
-                if (operations[operation_selected] == "6. File info") {
-                    char input = 0;
-                    while(input != 27) {
-                        draw_file_info(optionwin, file);
-                        input = wgetch(optionwin);
-                        if (input == 113) {
-                            exit_flag = 1;
-                            return;
-                        }
-                    }
-                    draw_options(optionwin, operations, 6, operation_selected);
+                if (operations[operation_selected] == "2. Rename") {
+                	while(true) {
+                    	update_file_name(optionwin, file);
+                    	break;
+                   	}
                 }
-                break;
+                return;
             case 113:
             	exit_flag = 1;
                 return;
@@ -163,13 +215,13 @@ void input_operation(WINDOW* optionwin, fs::path file) {
                 break;
         }
         
-        draw_options(optionwin, operations, 6, operation_selected);
+        draw_options(optionwin, operations, OPERATIONS_COUNT, operation_selected);
         print_absolute_path(optionwin, file);
 
         if (exit_flag) return;
     }
     
-    draw_options(optionwin, operations, 6, operation_selected);
+    draw_options(optionwin, operations, OPERATIONS_COUNT, operation_selected);
     return;
 }
 
@@ -184,20 +236,18 @@ int main() {
     
     getmaxyx(stdscr, yMax, xMax);
     int divider = std::max(20, xMax / 2);
-
-    std::vector<fs::path> list = list_of_files();
     
     WINDOW* menuwin = newwin(yMax, divider, 0, 0);
     WINDOW* optionwin = newwin(yMax, divider, 0, divider);
     keypad(menuwin, TRUE);
     
-    int selected = 0;
     int input;
     
     draw_menu(menuwin, list, selected);
-    draw_options(optionwin, operations, 6, -1);
     
     while(true) {
+    	draw_file_info(optionwin, list[selected]);
+    	
         input = wgetch(menuwin);
         
         switch(input) {
@@ -235,7 +285,7 @@ int main() {
         if (exit_flag == 1) {
             break;
         }
-
+		
         draw_menu(menuwin, list, selected);
     }
     
